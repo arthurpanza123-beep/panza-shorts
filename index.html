@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Panza Shorts</title>
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./roster.css" />
+    <link rel="stylesheet" href="./apple-blue.css" />
+    <link rel="stylesheet" href="./dashboard.css" />
+  </head>
+  <body>
+    <canvas id="sparks" aria-hidden="true"></canvas>
+    <main class="counter-shell">
+      <header class="heading"><div class="brand"><img src="./favicon.svg" alt="" /><div><h1>Shorts Panza</h1><span>STUDIO</span></div></div></header>
+      <nav class="dashboard-tabs" role="tablist" aria-label="Painel"><button id="tab-team" role="tab" aria-controls="team" aria-selected="true" data-tab="team"><img src="./check-check.svg" alt="" />Equipe</button><button id="tab-overview" role="tab" aria-controls="overview" aria-selected="false" tabindex="-1" data-tab="overview"><img src="./clapperboard.svg" alt="" />Gráficos</button></nav>
+      <section id="overview" role="tabpanel" aria-labelledby="tab-overview" hidden>
+        <div class="page-title"><h2>Gráficos<span>.</span></h2><time id="dashboardDate"></time></div>
+        <div id="metrics" class="metrics"></div>
+        <div class="chart-layout"><section class="chart-section"><header><div><h3>Ritmo de produção</h3><p>Entregas registradas por dia</p></div><div class="periods" role="group" aria-label="Período"><button data-days="7" aria-pressed="true">7 dias</button><button data-days="30" aria-pressed="false">30 dias</button></div></header><div id="timeline"></div></section><section class="chart-section team-chart"><header><div><h3>Progresso da equipe</h3><p>Concluídos por pessoa</p></div></header><div id="teamProgress"></div><button class="team-shortcut" data-open-team>Ir para equipe <img src="./arrow-up-right.svg" alt="" /></button></section></div>
+      </section>
+      <section id="team" role="tabpanel" aria-labelledby="tab-team">
+      <div class="section-heading"><div><span class="eyebrow">PRODUÇÃO</span><h2>Sua equipe<span>.</span></h2></div><div class="total"><b id="remaining">0</b><span>shorts restantes</span></div></div>
+      <div class="toolbar"><span>5 pessoas</span><div class="today-summary"><img src="./calendar-days.svg" alt="" /><span>Hoje</span><b id="todayTotal">0</b><span>na equipe</span></div></div>
+      <section id="counters" class="counters" aria-label="Contadores da equipe"></section>
+      </section>
+      <p id="notice" role="status" aria-live="polite"></p>
+    </main>
+    <dialog id="editDialog" aria-labelledby="editTitle"><form id="editForm"><header><h2 id="editTitle">Ajustar quantidade</h2><button class="icon close" type="button" aria-label="Fechar"><img src="./close.svg" alt="" /></button></header><label>Quantos faltam?<input id="editRemaining" type="number" min="0" step="1" required /></label><button class="primary" type="submit">Salvar ajuste</button></form></dialog>
+    <dialog id="scriptsDialog" aria-labelledby="scriptsTitle"><header><h2 id="scriptsTitle">Roteiros</h2><button class="icon close" type="button" aria-label="Fechar"><img src="./close.svg" alt="" /></button></header><ol id="scripts"></ol></dialog>
+    <script src="./dashboard.js"></script>
+    <script src="./roster.js"></script>
+    <script src="./sparks.js"></script>
+  </body>
+</html>
