@@ -55,7 +55,7 @@
       }
       const payload = { ...nextState, updatedAt: new Date().toISOString() };
       const reqBody = {
-        message: 'Sync delivery update',
+        message: 'Sync delivery/adjust update',
         content: encodePayload(payload)
       };
       if (currentSha) reqBody.sha = currentSha;
@@ -187,16 +187,16 @@
 
   function render() {
     const names = Object.keys(owners);
-    $('#remaining').textContent = names.reduce((sum,name) => sum + (state.people[name]?.planned || 0) - (state.people[name]?.done || 0),0);
+    $('#remaining').textContent = names.reduce((sum,name) => sum + Math.max(0, (state.people[name]?.planned || 0) - (state.people[name]?.done || 0)), 0);
     $('#todayTotal').textContent = names.reduce((sum,name) => sum + todayFor(name),0);
     const visible = names;
     const html = visible.map(name => {
-      const p = state.people[name] || {planned:0, done:0}, owner = owners[name], left = p.planned-p.done;
+      const p = state.people[name] || {planned:0, done:0}, owner = owners[name], left = Math.max(0, p.planned - p.done);
       return `<article class="counter ${left ? '' : 'complete'}" data-owner="${escape(name)}" style="--person:${owner.color}">
         <div class="person"><span class="avatar ${owner.crop || ''}">${owner.photo ? `<img src="./${owner.photo}" alt="${escape(displayName(name))}" />` : owner.initial}</span><div class="person-copy"><h3>${escape(displayName(name))}</h3><span class="today-person ${todayFor(name) ? 'has-delivery' : ''}"><b>${todayFor(name)}</b> hoje${left ? '' : ' · Tudo em dia'}</span></div></div>
-        <div class="remaining"><div class="balance"><strong>${left}</strong><span>${left === 1 ? 'falta' : 'faltam'}</span></div><div class="progress"><i style="width:${p.planned ? p.done/p.planned*100 : 100}%"></i></div></div>
+        <div class="remaining"><div class="balance"><strong>${left}</strong><span>${left === 1 ? 'falta' : 'faltam'}</span></div><div class="progress"><i style="width:${p.planned ? Math.min(100, p.done/p.planned*100) : 100}%"></i></div></div>
         <form class="delivery"><button class="primary" type="submit" ${left ? '' : 'disabled'}><img src="./check.svg" alt="" /><span>${left ? 'Entregou' : 'Concluído'}</span></button></form>
-        <div class="row-tools"><button class="icon" data-action="edit" title="Ajustar quantidade de ${escape(name)}" aria-label="Ajustar quantidade de ${escape(name)}"><img src="./adjust.svg" alt="" /></button></div>
+        <div class="row-tools"><button class="icon" data-action="edit" title="Ajustar / Adicionar vídeos de ${escape(name)}" aria-label="Ajustar / Adicionar vídeos de ${escape(name)}"><img src="./adjust.svg" alt="" /></button></div>
       </article>`;
     }).join('');
     const current = [...$('#counters').querySelectorAll('.counter')];
@@ -214,24 +214,66 @@
     window.dispatchEvent(new CustomEvent('panza-update', {detail:structuredClone(state)}));
   }
 
-  function save(name, done, type) {
+  // Handle Delivery (+1 video delivered)
+  function deliverOne(name) {
     state = read(KEY,state);
-    const old = state.people[name];
-    if (!Number.isInteger(done) || done < 0 || done > old.planned) return false;
-    if (done === old.done) return true;
+    const p = state.people[name];
+    if (p.done >= p.planned) return false;
     const next = structuredClone(state);
-    next.people[name] = {...old, done};
-    next.events.push({id:crypto.randomUUID(),owner:name,day:day(),at:new Date().toISOString(),type,doneDelta:done-old.done,extraDelta:0});
+    next.people[name] = { ...p, done: p.done + 1 };
+    next.events.push({
+      id: crypto.randomUUID(),
+      owner: name,
+      day: day(),
+      at: new Date().toISOString(),
+      type: 'delivery',
+      doneDelta: 1,
+      extraDelta: 0
+    });
     next.updatedAt = new Date().toISOString();
     try {
-      localStorage.setItem(KEY,JSON.stringify(next)); state = next; render();
+      localStorage.setItem(KEY, JSON.stringify(next));
+      state = next;
+      render();
       pushCloud(next);
       clearTimeout(noticeTimer);
-      $('#notice').textContent = `${displayName(name)}: ${old.planned-done} ${old.planned-done === 1 ? 'restante' : 'restantes'}.`;
-      noticeTimer = setTimeout(() => { $('#notice').textContent = ''; },3500);
+      const left = next.people[name].planned - next.people[name].done;
+      $('#notice').textContent = `${displayName(name)}: ${left} ${left === 1 ? 'restante' : 'restantes'}.`;
+      noticeTimer = setTimeout(() => { $('#notice').textContent = ''; }, 3500);
       return true;
     } catch {
-      $('#notice').textContent = 'Não foi possível salvar.';
+      return false;
+    }
+  }
+
+  // Handle Adjustment (Set remaining count or add more videos to edit)
+  function setRemainingCount(name, newRemaining) {
+    state = read(KEY,state);
+    const p = state.people[name];
+    if (!Number.isInteger(newRemaining) || newRemaining < 0) return false;
+    const next = structuredClone(state);
+    const newPlanned = p.done + newRemaining;
+    next.people[name] = { ...p, planned: newPlanned };
+    next.events.push({
+      id: crypto.randomUUID(),
+      owner: name,
+      day: day(),
+      at: new Date().toISOString(),
+      type: 'adjustment',
+      doneDelta: 0,
+      extraDelta: 0
+    });
+    next.updatedAt = new Date().toISOString();
+    try {
+      localStorage.setItem(KEY, JSON.stringify(next));
+      state = next;
+      render();
+      pushCloud(next);
+      clearTimeout(noticeTimer);
+      $('#notice').textContent = `${displayName(name)}: agora faltam ${newRemaining} ${newRemaining === 1 ? 'vídeo' : 'vídeos'}.`;
+      noticeTimer = setTimeout(() => { $('#notice').textContent = ''; }, 3500);
+      return true;
+    } catch {
       return false;
     }
   }
@@ -239,15 +281,12 @@
   $('#counters').addEventListener('submit', event => {
     event.preventDefault();
     const row = event.target.closest('.counter'), name = row.dataset.owner;
-    state = read(KEY,state);
-    const p = state.people[name], quantity = 1;
-    if (p.done >= p.planned) { render(); return; }
-    if (save(name,p.done+quantity,'delivery')) {
+    if (deliverOne(name)) {
       feedback(true);
       const target = [...document.querySelectorAll('.counter')].find(el => el.dataset.owner === name);
       if (target && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
         target.querySelector('.balance strong').animate([{opacity:.35,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}],{duration:220});
-        const pulse = document.createElement('span'); pulse.className = 'count-feedback'; pulse.textContent = `−${quantity}`; target.append(pulse);
+        const pulse = document.createElement('span'); pulse.className = 'count-feedback'; pulse.textContent = '−1'; target.append(pulse);
         pulse.animate([{opacity:0,transform:'translateY(4px)'},{opacity:1,offset:.2},{opacity:0,transform:'translateY(-20px)'}],{duration:650}).finished.then(() => pulse.remove());
       }
     }
@@ -258,15 +297,31 @@
     const name = button.closest('.counter').dataset.owner;
     if (button.dataset.action === 'edit') {
       state = read(KEY,state); editOwner = name;
+      const p = state.people[name], left = Math.max(0, p.planned - p.done);
       $('#editTitle').textContent = `Ajustar · ${displayName(name)}`;
-      $('#editRemaining').value = state.people[name].planned-state.people[name].done;
-      $('#editRemaining').max = state.people[name].planned; $('#editDialog').showModal();
+      $('#editSubtitle').textContent = `Atualmente: ${left} faltam (${p.done} já entregues hoje/total)`;
+      $('#editRemaining').value = left;
+      $('#editRemaining').removeAttribute('max');
+      $('#editDialog').showModal();
     }
   });
 
+  // Quick add buttons (+1, +2, +3, +5, +10)
+  document.querySelectorAll('[data-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const addVal = Number(btn.dataset.add);
+      const input = $('#editRemaining');
+      input.value = Math.max(0, Number(input.value || 0) + addVal);
+    });
+  });
+
   $('#editForm').addEventListener('submit', event => {
-    event.preventDefault(); state = read(KEY,state);
-    if (save(editOwner,state.people[editOwner].planned-Number($('#editRemaining').value),'correction')) { $('#editDialog').close(); feedback(false); }
+    event.preventDefault();
+    const newRemaining = Number($('#editRemaining').value);
+    if (setRemainingCount(editOwner, newRemaining)) {
+      $('#editDialog').close();
+      feedback(false);
+    }
   });
 
   document.querySelectorAll('.close').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));

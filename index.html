@@ -30,7 +30,39 @@
       </section>
       <p id="notice" role="status" aria-live="polite"></p>
     </main>
-    <dialog id="editDialog" aria-labelledby="editTitle"><form id="editForm"><header><h2 id="editTitle">Ajustar quantidade</h2><button class="icon close" type="button" aria-label="Fechar"><img src="./close.svg" alt="" /></button></header><label>Quantos faltam?<input id="editRemaining" type="number" min="0" step="1" required /></label><button class="primary" type="submit">Salvar ajuste</button></form></dialog>
+    <dialog id="editDialog" aria-labelledby="editTitle">
+      <form id="editForm">
+        <header>
+          <div>
+            <h2 id="editTitle">Ajustar vídeos</h2>
+            <span class="dialog-subtitle" id="editSubtitle">Defina os vídeos do editor</span>
+          </div>
+          <button class="icon close" type="button" aria-label="Fechar"><img src="./close.svg" alt="" /></button>
+        </header>
+        <div class="edit-section">
+          <label class="edit-label">
+            <span>Adicionar novos vídeos para editar (+):</span>
+            <div class="quick-add-group">
+              <button type="button" class="quick-btn" data-add="1">+1</button>
+              <button type="button" class="quick-btn" data-add="2">+2</button>
+              <button type="button" class="quick-btn" data-add="3">+3</button>
+              <button type="button" class="quick-btn" data-add="5">+5</button>
+              <button type="button" class="quick-btn" data-add="10">+10</button>
+            </div>
+          </label>
+        </div>
+        <div class="edit-divider"><span>OU DEFINIR QUANTIDADE QUE FALTA</span></div>
+        <div class="edit-section">
+          <label class="edit-label" for="editRemaining">
+            <span>Quantos faltam no total agora?</span>
+            <input id="editRemaining" type="number" min="0" step="1" required />
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button class="primary" type="submit">Salvar ajuste</button>
+        </div>
+      </form>
+    </dialog>
     <script src="./dashboard.js"></script>
     <script src="./roster.js"></script>
     <script src="./sparks.js"></script>
