@@ -181,6 +181,37 @@
     } catch {}
   }
 
+  function formatLastTime(isoStr) {
+    if (!isoStr) return '';
+    const date = new Date(isoStr);
+    if (isNaN(date.getTime())) return '';
+    const now = new Date();
+    const isToday = date.getFullYear() === now.getFullYear() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getDate() === now.getDate();
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const timeStr = `${hours}:${minutes}`;
+    if (isToday) return `às ${timeStr}`;
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.getFullYear() === yesterday.getFullYear() &&
+                        date.getMonth() === yesterday.getMonth() &&
+                        date.getDate() === yesterday.getDate();
+    if (isYesterday) return `ontem às ${timeStr}`;
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} às ${timeStr}`;
+  }
+
+  function getPersonLastModified(name) {
+    const p = state.people[name];
+    if (p?.lastModified) return p.lastModified;
+    const personEvents = (state.events || []).filter(e => e.owner === name);
+    if (personEvents.length) {
+      return personEvents[personEvents.length - 1].at;
+    }
+    return state.updatedAt || null;
+  }
+
   function todayFor(name) {
     return (state.previousDays?.[day()]?.[name] || 0) + (state.events || []).filter(e => e.owner === name && e.day === day() && e.type === 'delivery').reduce((sum,e) => sum + Math.max(0,e.doneDelta) + Math.max(0,e.extraDelta || 0),0);
   }
@@ -189,11 +220,20 @@
     const names = Object.keys(owners);
     $('#remaining').textContent = names.reduce((sum,name) => sum + Math.max(0, (state.people[name]?.planned || 0) - (state.people[name]?.done || 0)), 0);
     $('#todayTotal').textContent = names.reduce((sum,name) => sum + todayFor(name),0);
+    
+    const globalLast = state.updatedAt || (state.events || []).slice(-1)[0]?.at;
+    const globalEl = $('#globalLastTouch');
+    if (globalEl) {
+      globalEl.textContent = globalLast ? `· mexido ${formatLastTime(globalLast)}` : '';
+    }
+
     const visible = names;
     const html = visible.map(name => {
       const p = state.people[name] || {planned:0, done:0}, owner = owners[name], left = Math.max(0, p.planned - p.done);
+      const lastMod = getPersonLastModified(name);
+      const touchText = lastMod ? `Último mexido ${formatLastTime(lastMod)}` : '';
       return `<article class="counter ${left ? '' : 'complete'}" data-owner="${escape(name)}" style="--person:${owner.color}">
-        <div class="person"><span class="avatar ${owner.crop || ''}">${owner.photo ? `<img src="./${owner.photo}" alt="${escape(displayName(name))}" />` : owner.initial}</span><div class="person-copy"><h3>${escape(displayName(name))}</h3><span class="today-person ${todayFor(name) ? 'has-delivery' : ''}"><b>${todayFor(name)}</b> hoje${left ? '' : ' · Tudo em dia'}</span></div></div>
+        <div class="person"><span class="avatar ${owner.crop || ''}">${owner.photo ? `<img src="./${owner.photo}" alt="${escape(displayName(name))}" />` : owner.initial}</span><div class="person-copy"><h3>${escape(displayName(name))}</h3><span class="today-person ${todayFor(name) ? 'has-delivery' : ''}"><b>${todayFor(name)}</b> hoje${left ? '' : ' · Tudo em dia'}</span>${touchText ? `<span class="person-touch">${touchText}</span>` : ''}</div></div>
         <div class="remaining"><div class="balance"><strong>${left}</strong><span>${left === 1 ? 'falta' : 'faltam'}</span></div><div class="progress"><i style="width:${p.planned ? Math.min(100, p.done/p.planned*100) : 100}%"></i></div></div>
         <form class="delivery"><button class="primary" type="submit" ${left ? '' : 'disabled'}><img src="./check.svg" alt="" /><span>${left ? 'Entregou' : 'Concluído'}</span></button></form>
         <div class="row-tools"><button class="icon" data-action="edit" title="Ajustar / Adicionar vídeos de ${escape(name)}" aria-label="Ajustar / Adicionar vídeos de ${escape(name)}"><img src="./adjust.svg" alt="" /></button></div>
@@ -220,17 +260,18 @@
     const p = state.people[name];
     if (p.done >= p.planned) return false;
     const next = structuredClone(state);
-    next.people[name] = { ...p, done: p.done + 1 };
+    const nowIso = new Date().toISOString();
+    next.people[name] = { ...p, done: p.done + 1, lastModified: nowIso };
     next.events.push({
       id: crypto.randomUUID(),
       owner: name,
       day: day(),
-      at: new Date().toISOString(),
+      at: nowIso,
       type: 'delivery',
       doneDelta: 1,
       extraDelta: 0
     });
-    next.updatedAt = new Date().toISOString();
+    next.updatedAt = nowIso;
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
       state = next;
@@ -252,18 +293,19 @@
     const p = state.people[name];
     if (!Number.isInteger(newRemaining) || newRemaining < 0) return false;
     const next = structuredClone(state);
+    const nowIso = new Date().toISOString();
     const newPlanned = p.done + newRemaining;
-    next.people[name] = { ...p, planned: newPlanned };
+    next.people[name] = { ...p, planned: newPlanned, lastModified: nowIso };
     next.events.push({
       id: crypto.randomUUID(),
       owner: name,
       day: day(),
-      at: new Date().toISOString(),
+      at: nowIso,
       type: 'adjustment',
       doneDelta: 0,
       extraDelta: 0
     });
-    next.updatedAt = new Date().toISOString();
+    next.updatedAt = nowIso;
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
       state = next;
