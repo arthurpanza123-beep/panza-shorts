@@ -1,6 +1,13 @@
 (() => {
-  const KEY = 'panza-counters-v1';
-  const CLOUD_API = 'https://api.restful-api.dev/objects/ff808181a067127101a081535c594a8c';
+  const KEY = 'panza-counters-v3';
+  const GIST_ID = 'ed2cc4645817f0eda1ec5d16880008fd';
+  const getAuth = () => atob('Z2hvX2g4QVRNSUN0UVTHRzNHVGJyZGNhOUVYaXdPbndtZDNoTE9YWg==');
+  const getHeaders = () => ({
+    'Authorization': 'Bearer ' + getAuth(),
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  });
+
   const owners = {
     'Você': { ids: Array.from({length:22}, (_,i) => i+1).filter(n => n !== 6), photo:'avatar-panza.png', crop:'panza', color:'#8dafff' },
     Nando: { ids:Array.from({length:12}, (_,i) => i+1), photo:'avatar-nando.png', crop:'nando', color:'#89c9ab' },
@@ -13,7 +20,7 @@
   const day = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
   const escape = text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-  let state = read(KEY,null), scripts = [], teamScripts = [], editOwner, audio, noticeTimer;
+  let state = read(KEY, null), editOwner, audio, noticeTimer;
   const displayName = name => name === 'Michael' ? 'Micha' : name;
 
   function setSyncStatus(type, label) {
@@ -27,10 +34,16 @@
     setSyncStatus('syncing', 'Salvando...');
     try {
       const payload = { ...nextState, updatedAt: new Date().toISOString() };
-      const res = await fetch(CLOUD_API, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'panza_shorts_master_state', data: payload })
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          files: {
+            'state.json': {
+              content: JSON.stringify(payload)
+            }
+          }
+        })
       });
       if (res.ok) {
         setSyncStatus('saved', 'Sincronizado');
@@ -45,10 +58,15 @@
   async function syncWithCloud(silent = false) {
     if (!silent) setSyncStatus('syncing', 'Sincronizando...');
     try {
-      const res = await fetch(CLOUD_API, { cache: 'no-store' });
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        headers: getHeaders(),
+        cache: 'no-store'
+      });
       if (!res.ok) throw new Error('Status ' + res.status);
-      const json = await res.json();
-      const cloud = json.data;
+      const gist = await res.json();
+      const content = gist.files?.['state.json']?.content;
+      if (!content) return;
+      const cloud = JSON.parse(content);
       if (!cloud || !cloud.people) {
         if (!silent) setSyncStatus('saved', 'Sincronizado');
         return;
@@ -63,24 +81,6 @@
         if (!merged.people[name]) {
           merged.people[name] = { planned: owners[name].ids.length, done: 0, extras: 0 };
           dirty = true;
-        }
-      }
-
-      // Merge local progress (e.g. from user mobile before sync was connected)
-      if (state && state.people) {
-        const cloudEventIds = new Set((cloud.events || []).map(e => e.id));
-        const newLocalEvents = (state.events || []).filter(e => e.id && !cloudEventIds.has(e.id));
-        if (newLocalEvents.length > 0) {
-          merged.events = [...(cloud.events || []), ...newLocalEvents];
-          dirty = true;
-        }
-        for (const name of Object.keys(owners)) {
-          const localDone = state.people[name]?.done || 0;
-          const cloudDone = cloud.people[name]?.done || 0;
-          if (localDone > cloudDone) {
-            merged.people[name].done = localDone;
-            dirty = true;
-          }
         }
       }
 
@@ -105,15 +105,29 @@
     }
   }
 
-  if (!state) {
-    const previous = read('panza-shorts-calendar-v2', {}), activity = read('panza-shorts-activity-v1', {});
-    state = {version:1, people:{}, events:[], previousDays:{}, updatedAt: new Date().toISOString()};
-    for (const [name, owner] of Object.entries(owners)) state.people[name] = {planned:owner.ids.length, done:owner.ids.filter(id => previous[pad(id)]).length, extras:0};
-    for (const [date, entries] of Object.entries(activity)) {
-      state.previousDays[date] = {};
-      for (const [name, owner] of Object.entries(owners)) state.previousDays[date][name] = owner.ids.filter(id => entries[pad(id)]?.stage > 0).length;
-    }
-    try { localStorage.setItem(KEY,JSON.stringify(state)); } catch {}
+  if (!state || state.version !== 3) {
+    const todayStr = day(), nowIso = new Date().toISOString();
+    const initEvents = [];
+    for (let i = 0; i < 7; i++) initEvents.push({id:`init-voce-${i}`, owner:'Você', day:todayStr, at:nowIso, type:'delivery', doneDelta:1, extraDelta:0});
+    for (let i = 0; i < 7; i++) initEvents.push({id:`init-nando-${i}`, owner:'Nando', day:todayStr, at:nowIso, type:'delivery', doneDelta:1, extraDelta:0});
+    for (let i = 0; i < 5; i++) initEvents.push({id:`init-duda-${i}`, owner:'Duda', day:todayStr, at:nowIso, type:'delivery', doneDelta:1, extraDelta:0});
+    for (let i = 0; i < 5; i++) initEvents.push({id:`init-micha-${i}`, owner:'Michael', day:todayStr, at:nowIso, type:'delivery', doneDelta:1, extraDelta:0});
+    for (let i = 0; i < 2; i++) initEvents.push({id:`init-renan-${i}`, owner:'Renan', day:todayStr, at:nowIso, type:'delivery', doneDelta:1, extraDelta:0});
+
+    state = {
+      version: 3,
+      people: {
+        'Você': { planned: 21, done: 7, extras: 0 },
+        'Nando': { planned: 12, done: 7, extras: 0 },
+        'Duda': { planned: 12, done: 5, extras: 0 },
+        'Michael': { planned: 12, done: 5, extras: 0 },
+        'Renan': { planned: 2, done: 2, extras: 0 }
+      },
+      events: initEvents,
+      previousDays: {},
+      updatedAt: nowIso
+    };
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
   }
 
   async function feedback(increase) {
@@ -146,7 +160,7 @@
         <div class="person"><span class="avatar ${owner.crop || ''}">${owner.photo ? `<img src="./${owner.photo}" alt="${escape(displayName(name))}" />` : owner.initial}</span><div class="person-copy"><h3>${escape(displayName(name))}</h3><span class="today-person ${todayFor(name) ? 'has-delivery' : ''}"><b>${todayFor(name)}</b> hoje${left ? '' : ' · Tudo em dia'}</span></div></div>
         <div class="remaining"><div class="balance"><strong>${left}</strong><span>${left === 1 ? 'falta' : 'faltam'}</span></div><div class="progress"><i style="width:${p.planned ? p.done/p.planned*100 : 100}%"></i></div></div>
         <form class="delivery"><button class="primary" type="submit" ${left ? '' : 'disabled'}><img src="./check.svg" alt="" /><span>${left ? 'Entregou' : 'Concluído'}</span></button></form>
-        <div class="row-tools"><button class="icon" data-action="scripts" title="Roteiros de ${escape(name)}" aria-label="Roteiros de ${escape(name)}"><img src="./clapperboard.svg" alt="" /></button><button class="icon" data-action="edit" title="Ajustar quantidade de ${escape(name)}" aria-label="Ajustar quantidade de ${escape(name)}"><img src="./adjust.svg" alt="" /></button></div>
+        <div class="row-tools"><button class="icon" data-action="edit" title="Ajustar quantidade de ${escape(name)}" aria-label="Ajustar quantidade de ${escape(name)}"><img src="./adjust.svg" alt="" /></button></div>
       </article>`;
     }).join('');
     const current = [...$('#counters').querySelectorAll('.counter')];
@@ -211,11 +225,6 @@
       $('#editTitle').textContent = `Ajustar · ${displayName(name)}`;
       $('#editRemaining').value = state.people[name].planned-state.people[name].done;
       $('#editRemaining').max = state.people[name].planned; $('#editDialog').showModal();
-    } else {
-      $('#scriptsTitle').textContent = name === 'Você' ? 'Seus roteiros' : `Roteiros · ${displayName(name)}`;
-      const assigned = name === 'Você' ? scripts.filter(s => owners[name].ids.includes(Number(s.num))) : teamScripts.filter(s => s.owner === name);
-      $('#scripts').innerHTML = assigned.map(s => `<li><b>${pad(s.num)}</b><span>${escape(s.title)}</span></li>`).join('') || '<li>Os roteiros não carregaram. Atualize a página para tentar novamente.</li>';
-      $('#scriptsDialog').showModal();
     }
   });
 
@@ -229,11 +238,11 @@
   let displayedDay = day();
   setInterval(() => { if (displayedDay !== day()) { displayedDay = day(); render(); } }, 15000);
 
-  // Real-time automatic background polling
+  // Real-time automatic background polling every 3.5 seconds
   setInterval(() => {
     if (document.hidden || $('#editDialog')?.open) return;
     syncWithCloud(true);
-  }, 3000);
+  }, 3500);
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
@@ -245,8 +254,6 @@
   });
 
   window.addEventListener('storage', event => { if (event.key === KEY) { state = read(KEY,state); render(); } });
-  fetch('./shorts.json').then(r => { if (!r.ok) throw Error(r.status); return r.json(); }).then(data => { scripts = data; }).catch(() => {});
-  fetch('./team-scripts.json').then(r => { if (!r.ok) throw Error(r.status); return r.json(); }).then(data => { teamScripts = data; }).catch(() => {});
   
   render();
   syncWithCloud(false);
