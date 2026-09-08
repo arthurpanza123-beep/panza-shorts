@@ -13,7 +13,10 @@
   <body>
     <canvas id="sparks" aria-hidden="true"></canvas>
     <main class="counter-shell">
-      <header class="heading"><div class="brand"><img src="./favicon.svg" alt="" /><div><h1>Shorts Panza</h1><span>STUDIO</span></div></div></header>
+      <header class="heading">
+        <div class="brand"><img src="./favicon.svg" alt="" /><div><h1>Shorts Panza</h1><span>STUDIO</span></div></div>
+        <div class="sync-badge" id="syncStatus" title="Status de sincronização em tempo real entre celular e PC"><span class="sync-dot"></span><span id="syncText">Sincronizado</span></div>
+      </header>
       <nav class="dashboard-tabs" role="tablist" aria-label="Painel"><button id="tab-team" role="tab" aria-controls="team" aria-selected="true" data-tab="team"><img src="./check-check.svg" alt="" />Equipe</button><button id="tab-overview" role="tab" aria-controls="overview" aria-selected="false" tabindex="-1" data-tab="overview"><img src="./clapperboard.svg" alt="" />Gráficos</button></nav>
       <section id="overview" role="tabpanel" aria-labelledby="tab-overview" hidden>
         <div class="page-title"><h2>Gráficos<span>.</span></h2><time id="dashboardDate"></time></div>
