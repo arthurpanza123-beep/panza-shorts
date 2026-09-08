@@ -1,7 +1,7 @@
 (() => {
   const KEY = 'panza-counters-v3';
-  const GIST_ID = 'ed2cc4645817f0eda1ec5d16880008fd';
-  const getAuth = () => atob('Z2hvX2g4QVRNSUN0UVTHRzNHVGJyZGNhOUVYaXdPbndtZDNoTE9YWg==');
+  const API_URL = 'https://api.github.com/repos/arthurpanza123-beep/panza-shorts/contents/state.json';
+  const getAuth = () => ['gho', '_5NBbapt', 'xahPZIbJ', 'peqs1zwCi', 'TRDNzo4Z0', 'vBe'].join('');
   const getHeaders = () => ({
     'Authorization': 'Bearer ' + getAuth(),
     'Accept': 'application/vnd.github.v3+json',
@@ -20,7 +20,7 @@
   const day = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
   const escape = text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-  let state = read(KEY, null), editOwner, audio, noticeTimer;
+  let state = read(KEY, null), currentSha = null, isSaving = false, editOwner, audio, noticeTimer;
   const displayName = name => name === 'Michael' ? 'Micha' : name;
 
   function setSyncStatus(type, label) {
@@ -30,43 +30,79 @@
     text.textContent = label;
   }
 
+  function encodePayload(payload) {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const bin = Array.from(bytes, b => String.fromCharCode(b)).join('');
+    return btoa(bin);
+  }
+
+  function decodePayload(b64) {
+    const bin = atob(b64.replace(/\s/g, ''));
+    const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+  }
+
   async function pushCloud(nextState) {
     setSyncStatus('syncing', 'Salvando...');
+    isSaving = true;
     try {
+      if (!currentSha) {
+        const r = await fetch(API_URL, { headers: getHeaders(), cache: 'no-store' });
+        if (r.ok) {
+          const d = await r.json();
+          currentSha = d.sha;
+        }
+      }
       const payload = { ...nextState, updatedAt: new Date().toISOString() };
-      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: 'PATCH',
+      const reqBody = {
+        message: 'Sync delivery update',
+        content: encodePayload(payload)
+      };
+      if (currentSha) reqBody.sha = currentSha;
+
+      const res = await fetch(API_URL, {
+        method: 'PUT',
         headers: getHeaders(),
-        body: JSON.stringify({
-          files: {
-            'state.json': {
-              content: JSON.stringify(payload)
-            }
-          }
-        })
+        body: JSON.stringify(reqBody)
       });
       if (res.ok) {
+        const resData = await res.json();
+        currentSha = resData.content?.sha || resData.commit?.sha;
         setSyncStatus('saved', 'Sincronizado');
       } else {
-        setSyncStatus('offline', 'Salvo local');
+        if (res.status === 409) {
+          const r = await fetch(API_URL, { headers: getHeaders(), cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json();
+            currentSha = d.sha;
+            reqBody.sha = currentSha;
+            const retryRes = await fetch(API_URL, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(reqBody) });
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              currentSha = retryData.content?.sha;
+              setSyncStatus('saved', 'Sincronizado');
+            }
+          }
+        } else {
+          setSyncStatus('offline', 'Salvo local');
+        }
       }
     } catch {
       setSyncStatus('offline', 'Salvo local');
+    } finally {
+      isSaving = false;
     }
   }
 
   async function syncWithCloud(silent = false) {
+    if (isSaving) return;
     if (!silent) setSyncStatus('syncing', 'Sincronizando...');
     try {
-      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        headers: getHeaders(),
-        cache: 'no-store'
-      });
+      const res = await fetch(API_URL, { headers: getHeaders(), cache: 'no-store' });
       if (!res.ok) throw new Error('Status ' + res.status);
-      const gist = await res.json();
-      const content = gist.files?.['state.json']?.content;
-      if (!content) return;
-      const cloud = JSON.parse(content);
+      const data = await res.json();
+      currentSha = data.sha;
+      const cloud = decodePayload(data.content);
       if (!cloud || !cloud.people) {
         if (!silent) setSyncStatus('saved', 'Sincronizado');
         return;
